@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Tableau packaged workbooks (contain embedded data, can be large)
+*.twbx
