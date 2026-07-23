@@ -96,7 +96,7 @@ SELECT
     s.total_depth_to_ft as "Total Depth To (ft)"
 FROM siera AS s
 JOIN projects AS p
-    ON p.project_number = <Parameters.Project Number>
+    ON p.project_number = <Parameters.Enter Project Number>
     AND s.project_id = p.id
 LEFT JOIN locations AS l
     ON s.project_id = l.project_id

@@ -1,3 +1,4 @@
+-- All results and MRL values converted to ppbv where possible
 WITH base AS (
     SELECT
         s.id,
@@ -149,7 +150,7 @@ SELECT
         ELSE NULLIF(TRIM(analysis), '')
     END AS "Analysis Description",
     analytical_method AS "Analytical Method",
-    analyte AS "Analyte",
+    INITCAP(analyte) AS "Analyte",
     cas_no AS "CAS Number",
     'ppbv' AS "Result Units",
     result * conversion_factor AS "Result",
