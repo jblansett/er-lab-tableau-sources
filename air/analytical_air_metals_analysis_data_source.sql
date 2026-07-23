@@ -8,6 +8,11 @@ WITH base AS (
         p.state,
         p.latitude                  AS project_lat,
         p.longitude                 AS project_lon,
+        pl.name                     AS plan_name,
+        atr.name                    AS assessment_name,
+        atr.label                   AS assessment_label,
+        atr.assessment_status       AS assessment_status,
+        s.comments                  AS field_comments,
         s.sdg_id,
         s.primary_identifier,
         s.secondary_identifier,
@@ -68,6 +73,12 @@ WITH base AS (
         ON s.location_id = l.id
     LEFT JOIN location_types AS lt
         ON l.location_type_id = lt.id
+    LEFT JOIN plans AS pl
+        ON s.project_id = pl.project_id
+        AND s.plan_id = pl.id
+    LEFT JOIN assessment_tracker_records AS atr
+        ON s.project_id = atr.project_id
+        AND s.atr_id = atr.id
     LEFT JOIN atsdr_mrls AS mrls_inh_acute
         ON lr.cas_no = mrls_inh_acute.cas_number
         AND LOWER(mrls_inh_acute.mrl_unit) IN ('mg/m3', 'ug/m3', 'µg/m3', 'μg/m3', 'ng/m3', 'pg/m3')
@@ -101,6 +112,11 @@ SELECT
     state AS "Project State",
     project_lat AS "Project Latitude",
     project_lon AS "Project Longitude",
+    plan_name AS "Plan Name",
+    assessment_name AS "Assessment Name",
+    assessment_label AS "Assessment Label",
+    assessment_status AS "Assessment Status",
+    field_comments AS "Field Comments",
     sdg_id AS "SDG ID",
     primary_identifier AS "Primary Identifier",
     secondary_identifier AS "Secondary Identifier",
