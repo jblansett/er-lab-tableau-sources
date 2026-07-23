@@ -1,0 +1,2237 @@
+<?xml version='1.0' encoding='utf-8' ?>
+
+<!-- build 20241.24.0208.0337                               -->
+<workbook original-version='18.1' source-build='2024.1.0 (20241.24.0208.0337)' source-platform='win' version='18.1' xmlns:user='http://www.tableausoftware.com/xml/user'>
+  <document-format-change-manifest>
+    <_.fcp.AnimationOnByDefault.true...AnimationOnByDefault />
+    <_.fcp.MarkAnimation.true...MarkAnimation />
+    <_.fcp.ObjectModelEncapsulateLegacy.true...ObjectModelEncapsulateLegacy />
+    <_.fcp.ObjectModelTableType.true...ObjectModelTableType />
+    <_.fcp.SchemaViewerObjectModel.true...SchemaViewerObjectModel />
+    <SheetIdentifierTracking />
+    <WindowsPersistSimpleIdentifiers />
+  </document-format-change-manifest>
+  <preferences>
+    <preference name='ui.encoding.shelf.height' value='24' />
+    <preference name='ui.shelf.height' value='26' />
+  </preferences>
+  <_.fcp.AnimationOnByDefault.false...style>
+    <_.fcp.AnimationOnByDefault.false..._.fcp.MarkAnimation.true...style-rule element='animation'>
+      <_.fcp.AnimationOnByDefault.false...format attr='animation-on' value='ao-on' />
+    </_.fcp.AnimationOnByDefault.false..._.fcp.MarkAnimation.true...style-rule>
+  </_.fcp.AnimationOnByDefault.false...style>
+  <datasources>
+    <datasource hasconnection='false' inline='true' name='Parameters' version='18.1'>
+      <aliases enabled='yes' />
+      <column caption='Enter Project Number' datatype='string' name='[Parameter 1]' param-domain-type='any' role='measure' type='nominal' value='&quot;PROJ-069502&quot;'>
+        <calculation class='tableau' formula='&quot;PROJ-069502&quot;' />
+      </column>
+    </datasource>
+    <datasource caption='Water Sample Lab Results SQL' inline='true' name='federated.0r8zq6q1gupfag1aa4zyu0nweadz' version='18.1'>
+      <connection class='federated'>
+        <named-connections>
+          <named-connection caption='10.1.30.4' name='postgres.08htc790axz9yd1czoljy1tskj3w'>
+            <connection authentication='username-password' class='postgres' dbname='samples_cteh_com' one-time-sql='' port='5432' server='10.1.30.4' sslmode='require' username='jblansett' />
+          </named-connection>
+        </named-connections>
+        <_.fcp.ObjectModelEncapsulateLegacy.false...relation connection='postgres.08htc790axz9yd1czoljy1tskj3w' name='Custom SQL Query' type='text'><![CDATA[-- Analytical Water Sampling Results
+-- Subtypes: Drinking Water, Groundwater, Surface Water, Waste Water, Waste Characterization
+-- All results converted to µg/L where possible; non-aqueous units (e.g. degC, %REC) return NULL result
+WITH base AS (
+    SELECT
+        s.id,
+        s.date_time,
+        p.project_name,
+        p.city,
+        p.state,
+        p.latitude                  AS project_lat,
+        p.longitude                 AS project_lon,
+        pl.name                     AS plan_name,
+        atr.name                    AS assessment_name,
+        atr.label                   AS assessment_label,
+        atr.assessment_status       AS assessment_status,
+        s.comments                  AS field_comments,
+        s.sdg_id,
+        s.primary_identifier,
+        s.secondary_identifier,
+        s.sample_type,
+        s.siera_subtype,
+        lr.matrix_id,
+        s.latitude                  AS sample_lat,
+        s.longitude                 AS sample_lon,
+        l.latitude                  AS location_lat,
+        l.longitude                 AS location_lon,
+        lt.name                     AS location_type,
+        l.id                        AS location_id,
+        l.location_code,
+        l.location_description,
+        -- Field water quality parameters (varchar columns require safe cast in outer SELECT)
+        s.ysi_color,
+        s.ysi_odor,
+        s.ysi_turbidity_ntu,
+        s.ysi_temp_c,
+        s.ysi_do_mgl,
+        s.ysi_c_us,
+        s.ysi_ph,
+        s.orp_mv,
+        s.tds_gl,
+        s.salinity_ppt,
+        s.cl2_free_mg_l,
+        s.cl2_total_mg_l,
+        -- Depth
+        s.depth_from_ft_num,
+        s.depth_to_ft_num,
+        s.excavation_depth_ft_num,
+        s.total_depth_from_ft,
+        s.total_depth_to_ft,
+        -- Lab result columns
+        lr.lab_name,
+        lr.lab_coc_no,
+        lr.samp_no,
+        lr.lab_batch_no,
+        lr.qa_comment,
+        lr.qa_level,
+        lr.analysis,
+        lr.analytical_method,
+        lr.analyte,
+        lr.cas_no,
+        lr.result_units,
+        lr.result,
+        lr.mdl,
+        lr.limit_of_quantitation,
+        lr.reporting_limit,
+        lr.lab_result_qualifier,
+        -- Conversion factor to µg/L based on lab-submitted result_units.
+        -- Non-aqueous units (e.g. degC, %REC, NTU) return NULL, which surfaces
+        -- as NULL result columns in Tableau for auditing rather than silently wrong values.
+        CASE
+            WHEN lr.result_units ILIKE 'kg/L%'  THEN 1000000000.0
+            WHEN lr.result_units ILIKE 'g/L%'   THEN 1000000.0
+            WHEN lr.result_units ILIKE 'mg/L%'  THEN 1000.0
+            WHEN lr.result_units ILIKE 'ug/L%'
+              OR lr.result_units ILIKE 'µg/L%'
+              OR lr.result_units ILIKE 'μg/L%'  THEN 1.0
+            WHEN lr.result_units ILIKE 'ng/L%'  THEN 0.001
+            WHEN lr.result_units ILIKE 'pg/L%'  THEN 0.000001
+            ELSE NULL
+        END AS conversion_factor
+    FROM siera AS s
+    JOIN projects AS p
+        ON s.project_id = p.id
+    LEFT JOIN labresults AS lr
+        ON s.project_id = lr.project_id
+        AND s.primary_identifier = lr.samp_no
+        AND lr.sample_type_code ILIKE '%trg%'
+        AND lr.result_type_code = 'A'
+    LEFT JOIN locations AS l
+        ON s.project_id = l.project_id
+        AND s.location_id = l.id
+    LEFT JOIN location_types AS lt
+        ON l.location_type_id = lt.id
+    LEFT JOIN plans AS pl
+        ON s.project_id = pl.project_id
+        AND s.plan_id = pl.id
+    LEFT JOIN assessment_tracker_records AS atr
+        ON s.project_id = atr.project_id
+        AND s.atr_id = atr.id
+    WHERE p.project_number = <[Parameters].[Parameter 1]>
+        AND s.is_usable = TRUE
+        AND COALESCE(s.exclude_sample, FALSE) = FALSE
+        AND s.deleted_at IS NULL
+        AND s.siera_type = 'Sample-Pickup'
+        AND s.siera_subtype IN ('Drinking Water', 'Groundwater', 'Surface Water', 'Waste Water', 'Waste Characterization')
+        AND lr.samp_no IS NOT NULL
+)
+SELECT
+    id AS "Siera ID",
+    date_time::date AS "Sample Date",
+    date_time AS "Date Time",
+    project_name AS "Project Name",
+    city AS "Project City",
+    state AS "Project State",
+    project_lat AS "Project Latitude",
+    project_lon AS "Project Longitude",
+    plan_name AS "Plan Name",
+    assessment_name AS "Assessment Name",
+    assessment_label AS "Assessment Label",
+    assessment_status AS "Assessment Status",
+    field_comments AS "Field Comments",
+    sdg_id AS "SDG ID",
+    primary_identifier AS "Primary Identifier",
+    secondary_identifier AS "Secondary Identifier",
+    sample_type AS "Sample Type",
+    siera_subtype AS "Sample Subtype",
+    matrix_id AS "Matrix",
+    sample_lat AS "Sample Latitude",
+    sample_lon AS "Sample Longitude",
+    location_lat AS "Location Latitude",
+    location_lon AS "Location Longitude",
+    location_type AS "Location Type",
+    location_id AS "Location ID",
+    location_code AS "Location Code",
+    location_description AS "Fixed Location Description",
+    -- Field water quality parameters
+    ysi_color AS "Sample Color",
+    ysi_odor AS "Sample Odor",
+    CASE WHEN TRIM(ysi_turbidity_ntu) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_turbidity_ntu)::numeric
+         ELSE NULL
+    END AS "Turbidity (NTU)",
+    CASE WHEN TRIM(ysi_temp_c) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_temp_c)::numeric
+         ELSE NULL
+    END AS "Temperature (°C)",
+    CASE WHEN TRIM(ysi_do_mgl) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_do_mgl)::numeric
+         ELSE NULL
+    END AS "Dissolved Oxygen (mg/L)",
+    CASE WHEN TRIM(ysi_c_us) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_c_us)::numeric
+         ELSE NULL
+    END AS "Conductivity (mS/cm)",
+    CASE WHEN TRIM(ysi_ph) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_ph)::numeric
+         ELSE NULL
+    END AS "pH",
+    orp_mv AS "Oxygen Reduction Potential (mV)",
+    tds_gl AS "Total Dissolved Solids (g/L)",
+    salinity_ppt AS "Salinity (ppt)",
+    cl2_free_mg_l AS "Free Chlorine (mg/L)",
+    cl2_total_mg_l AS "Total Chlorine (mg/L)",
+    -- Data quality: non-numeric entries in field instrument columns
+    NULLIF(
+        array_to_string(
+            ARRAY[
+                CASE WHEN TRIM(ysi_turbidity_ntu) IS NOT NULL
+                          AND TRIM(ysi_turbidity_ntu) != ''
+                          AND TRIM(ysi_turbidity_ntu) !~ '^-?\d*\.?\d+$'
+                     THEN 'Turbidity: ''' || TRIM(ysi_turbidity_ntu) || ''''
+                END,
+                CASE WHEN TRIM(ysi_temp_c) IS NOT NULL
+                          AND TRIM(ysi_temp_c) != ''
+                          AND TRIM(ysi_temp_c) !~ '^-?\d*\.?\d+$'
+                     THEN 'Temperature: ''' || TRIM(ysi_temp_c) || ''''
+                END,
+                CASE WHEN TRIM(ysi_do_mgl) IS NOT NULL
+                          AND TRIM(ysi_do_mgl) != ''
+                          AND TRIM(ysi_do_mgl) !~ '^-?\d*\.?\d+$'
+                     THEN 'Dissolved Oxygen: ''' || TRIM(ysi_do_mgl) || ''''
+                END,
+                CASE WHEN TRIM(ysi_c_us) IS NOT NULL
+                          AND TRIM(ysi_c_us) != ''
+                          AND TRIM(ysi_c_us) !~ '^-?\d*\.?\d+$'
+                     THEN 'Conductivity: ''' || TRIM(ysi_c_us) || ''''
+                END,
+                CASE WHEN TRIM(ysi_ph) IS NOT NULL
+                          AND TRIM(ysi_ph) != ''
+                          AND TRIM(ysi_ph) !~ '^-?\d*\.?\d+$'
+                     THEN 'pH: ''' || TRIM(ysi_ph) || ''''
+                END
+            ],
+            ', '
+        ),
+        ''
+    ) AS "Water Quality QC Issues",
+    -- Depth
+    depth_from_ft_num AS "Sample Depth From (ft)",
+    depth_to_ft_num AS "Sample Depth To (ft)",
+    excavation_depth_ft_num AS "Excavation Depth (ft)",
+    total_depth_from_ft AS "Total Depth From (ft)",
+    total_depth_to_ft AS "Total Depth To (ft)",
+    -- Lab result columns
+    lab_name AS "Laboratory",
+    lab_coc_no AS "Laboratory COC",
+    samp_no AS "Sample ID",
+    lab_batch_no AS "Lab Batch No",
+    qa_comment AS "Lab QA Comment",
+    qa_level AS "Validation Status",
+    analysis AS "Analysis",
+    CASE NULLIF(TRIM(analysis), '')
+        WHEN 'V'  THEN 'Volatiles'
+        WHEN 'B'  THEN 'Semi-Volatiles'
+        WHEN 'P'  THEN 'Pesticides/PCBs'
+        WHEN 'M'  THEN 'Metals'
+        WHEN 'C'  THEN 'Non-Metals/Other Inorganics'
+        WHEN 'T'  THEN 'Total Petroleum Hydrocarbons'
+        WHEN 'F'  THEN 'Dioxins/Furans'
+        WHEN 'H'  THEN 'Herbicides'
+        WHEN 'R'  THEN 'Radiological'
+        WHEN 'PC' THEN 'Physical Characteristic'
+        ELSE NULLIF(TRIM(analysis), '')
+    END AS "Analysis Description",
+    analytical_method AS "Analytical Method",
+    INITCAP(analyte) AS "Analyte",
+    cas_no AS "CAS Number",
+    'µg/L' AS "Result Units",
+    result * conversion_factor AS "Result",
+    mdl * conversion_factor AS "Method Detection Limit",
+    limit_of_quantitation * conversion_factor AS "Limit of Quantitation",
+    reporting_limit * conversion_factor AS "Reporting Limit",
+    lab_result_qualifier AS "Lab Result Qualifier",
+    CASE
+        WHEN lab_result_qualifier IS NULL
+            OR lab_result_qualifier = ''
+            OR lab_result_qualifier NOT ILIKE '%u%'
+            THEN TRUE
+        ELSE FALSE
+    END AS "Detected?",
+    CASE
+        WHEN lab_result_qualifier IS NULL
+            OR lab_result_qualifier = ''
+            OR lab_result_qualifier NOT ILIKE '%u%'
+        THEN
+            RTRIM(
+                RTRIM(
+                    TO_CHAR(
+                        result * conversion_factor,
+                        'FM999,999,999,999,990.9999999999'
+                    ),
+                    '0'
+                ),
+                '.'
+            )
+            ||
+            CASE
+                WHEN NULLIF(TRIM(lab_result_qualifier), '') IS NOT NULL
+                    THEN ' (' || TRIM(lab_result_qualifier) || ')'
+                ELSE ''
+            END
+            || ' µg/L'
+        ELSE
+            '<< '
+            ||
+            RTRIM(
+                RTRIM(
+                    TO_CHAR(
+                        result * conversion_factor,
+                        'FM999,999,999,999,990.9999999999'
+                    ),
+                    '0'
+                ),
+                '.'
+            )
+            ||
+            CASE
+                WHEN NULLIF(
+                    TRIM(REGEXP_REPLACE(lab_result_qualifier, 'u', '', 'gi')),
+                    ''
+                ) IS NOT NULL
+                    THEN ' (' ||
+                         TRIM(REGEXP_REPLACE(lab_result_qualifier, 'u', '', 'gi'))
+                         || ')'
+                ELSE ''
+            END
+            || ' µg/L'
+    END AS "Result Formatted"
+FROM base]]></_.fcp.ObjectModelEncapsulateLegacy.false...relation>
+        <_.fcp.ObjectModelEncapsulateLegacy.true...relation connection='postgres.08htc790axz9yd1czoljy1tskj3w' name='Custom SQL Query' type='text'><![CDATA[-- Analytical Water Sampling Results
+-- Subtypes: Drinking Water, Groundwater, Surface Water, Waste Water, Waste Characterization
+-- All results converted to µg/L where possible; non-aqueous units (e.g. degC, %REC) return NULL result
+WITH base AS (
+    SELECT
+        s.id,
+        s.date_time,
+        p.project_name,
+        p.city,
+        p.state,
+        p.latitude                  AS project_lat,
+        p.longitude                 AS project_lon,
+        pl.name                     AS plan_name,
+        atr.name                    AS assessment_name,
+        atr.label                   AS assessment_label,
+        atr.assessment_status       AS assessment_status,
+        s.comments                  AS field_comments,
+        s.sdg_id,
+        s.primary_identifier,
+        s.secondary_identifier,
+        s.sample_type,
+        s.siera_subtype,
+        lr.matrix_id,
+        s.latitude                  AS sample_lat,
+        s.longitude                 AS sample_lon,
+        l.latitude                  AS location_lat,
+        l.longitude                 AS location_lon,
+        lt.name                     AS location_type,
+        l.id                        AS location_id,
+        l.location_code,
+        l.location_description,
+        -- Field water quality parameters (varchar columns require safe cast in outer SELECT)
+        s.ysi_color,
+        s.ysi_odor,
+        s.ysi_turbidity_ntu,
+        s.ysi_temp_c,
+        s.ysi_do_mgl,
+        s.ysi_c_us,
+        s.ysi_ph,
+        s.orp_mv,
+        s.tds_gl,
+        s.salinity_ppt,
+        s.cl2_free_mg_l,
+        s.cl2_total_mg_l,
+        -- Depth
+        s.depth_from_ft_num,
+        s.depth_to_ft_num,
+        s.excavation_depth_ft_num,
+        s.total_depth_from_ft,
+        s.total_depth_to_ft,
+        -- Lab result columns
+        lr.lab_name,
+        lr.lab_coc_no,
+        lr.samp_no,
+        lr.lab_batch_no,
+        lr.qa_comment,
+        lr.qa_level,
+        lr.analysis,
+        lr.analytical_method,
+        lr.analyte,
+        lr.cas_no,
+        lr.result_units,
+        lr.result,
+        lr.mdl,
+        lr.limit_of_quantitation,
+        lr.reporting_limit,
+        lr.lab_result_qualifier,
+        -- Conversion factor to µg/L based on lab-submitted result_units.
+        -- Non-aqueous units (e.g. degC, %REC, NTU) return NULL, which surfaces
+        -- as NULL result columns in Tableau for auditing rather than silently wrong values.
+        CASE
+            WHEN lr.result_units ILIKE 'kg/L%'  THEN 1000000000.0
+            WHEN lr.result_units ILIKE 'g/L%'   THEN 1000000.0
+            WHEN lr.result_units ILIKE 'mg/L%'  THEN 1000.0
+            WHEN lr.result_units ILIKE 'ug/L%'
+              OR lr.result_units ILIKE 'µg/L%'
+              OR lr.result_units ILIKE 'μg/L%'  THEN 1.0
+            WHEN lr.result_units ILIKE 'ng/L%'  THEN 0.001
+            WHEN lr.result_units ILIKE 'pg/L%'  THEN 0.000001
+            ELSE NULL
+        END AS conversion_factor
+    FROM siera AS s
+    JOIN projects AS p
+        ON s.project_id = p.id
+    LEFT JOIN labresults AS lr
+        ON s.project_id = lr.project_id
+        AND s.primary_identifier = lr.samp_no
+        AND lr.sample_type_code ILIKE '%trg%'
+        AND lr.result_type_code = 'A'
+    LEFT JOIN locations AS l
+        ON s.project_id = l.project_id
+        AND s.location_id = l.id
+    LEFT JOIN location_types AS lt
+        ON l.location_type_id = lt.id
+    LEFT JOIN plans AS pl
+        ON s.project_id = pl.project_id
+        AND s.plan_id = pl.id
+    LEFT JOIN assessment_tracker_records AS atr
+        ON s.project_id = atr.project_id
+        AND s.atr_id = atr.id
+    WHERE p.project_number = <[Parameters].[Parameter 1]>
+        AND s.is_usable = TRUE
+        AND COALESCE(s.exclude_sample, FALSE) = FALSE
+        AND s.deleted_at IS NULL
+        AND s.siera_type = 'Sample-Pickup'
+        AND s.siera_subtype IN ('Drinking Water', 'Groundwater', 'Surface Water', 'Waste Water', 'Waste Characterization')
+        AND lr.samp_no IS NOT NULL
+)
+SELECT
+    id AS "Siera ID",
+    date_time::date AS "Sample Date",
+    date_time AS "Date Time",
+    project_name AS "Project Name",
+    city AS "Project City",
+    state AS "Project State",
+    project_lat AS "Project Latitude",
+    project_lon AS "Project Longitude",
+    plan_name AS "Plan Name",
+    assessment_name AS "Assessment Name",
+    assessment_label AS "Assessment Label",
+    assessment_status AS "Assessment Status",
+    field_comments AS "Field Comments",
+    sdg_id AS "SDG ID",
+    primary_identifier AS "Primary Identifier",
+    secondary_identifier AS "Secondary Identifier",
+    sample_type AS "Sample Type",
+    siera_subtype AS "Sample Subtype",
+    matrix_id AS "Matrix",
+    sample_lat AS "Sample Latitude",
+    sample_lon AS "Sample Longitude",
+    location_lat AS "Location Latitude",
+    location_lon AS "Location Longitude",
+    location_type AS "Location Type",
+    location_id AS "Location ID",
+    location_code AS "Location Code",
+    location_description AS "Fixed Location Description",
+    -- Field water quality parameters
+    ysi_color AS "Sample Color",
+    ysi_odor AS "Sample Odor",
+    CASE WHEN TRIM(ysi_turbidity_ntu) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_turbidity_ntu)::numeric
+         ELSE NULL
+    END AS "Turbidity (NTU)",
+    CASE WHEN TRIM(ysi_temp_c) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_temp_c)::numeric
+         ELSE NULL
+    END AS "Temperature (°C)",
+    CASE WHEN TRIM(ysi_do_mgl) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_do_mgl)::numeric
+         ELSE NULL
+    END AS "Dissolved Oxygen (mg/L)",
+    CASE WHEN TRIM(ysi_c_us) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_c_us)::numeric
+         ELSE NULL
+    END AS "Conductivity (mS/cm)",
+    CASE WHEN TRIM(ysi_ph) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_ph)::numeric
+         ELSE NULL
+    END AS "pH",
+    orp_mv AS "Oxygen Reduction Potential (mV)",
+    tds_gl AS "Total Dissolved Solids (g/L)",
+    salinity_ppt AS "Salinity (ppt)",
+    cl2_free_mg_l AS "Free Chlorine (mg/L)",
+    cl2_total_mg_l AS "Total Chlorine (mg/L)",
+    -- Data quality: non-numeric entries in field instrument columns
+    NULLIF(
+        array_to_string(
+            ARRAY[
+                CASE WHEN TRIM(ysi_turbidity_ntu) IS NOT NULL
+                          AND TRIM(ysi_turbidity_ntu) != ''
+                          AND TRIM(ysi_turbidity_ntu) !~ '^-?\d*\.?\d+$'
+                     THEN 'Turbidity: ''' || TRIM(ysi_turbidity_ntu) || ''''
+                END,
+                CASE WHEN TRIM(ysi_temp_c) IS NOT NULL
+                          AND TRIM(ysi_temp_c) != ''
+                          AND TRIM(ysi_temp_c) !~ '^-?\d*\.?\d+$'
+                     THEN 'Temperature: ''' || TRIM(ysi_temp_c) || ''''
+                END,
+                CASE WHEN TRIM(ysi_do_mgl) IS NOT NULL
+                          AND TRIM(ysi_do_mgl) != ''
+                          AND TRIM(ysi_do_mgl) !~ '^-?\d*\.?\d+$'
+                     THEN 'Dissolved Oxygen: ''' || TRIM(ysi_do_mgl) || ''''
+                END,
+                CASE WHEN TRIM(ysi_c_us) IS NOT NULL
+                          AND TRIM(ysi_c_us) != ''
+                          AND TRIM(ysi_c_us) !~ '^-?\d*\.?\d+$'
+                     THEN 'Conductivity: ''' || TRIM(ysi_c_us) || ''''
+                END,
+                CASE WHEN TRIM(ysi_ph) IS NOT NULL
+                          AND TRIM(ysi_ph) != ''
+                          AND TRIM(ysi_ph) !~ '^-?\d*\.?\d+$'
+                     THEN 'pH: ''' || TRIM(ysi_ph) || ''''
+                END
+            ],
+            ', '
+        ),
+        ''
+    ) AS "Water Quality QC Issues",
+    -- Depth
+    depth_from_ft_num AS "Sample Depth From (ft)",
+    depth_to_ft_num AS "Sample Depth To (ft)",
+    excavation_depth_ft_num AS "Excavation Depth (ft)",
+    total_depth_from_ft AS "Total Depth From (ft)",
+    total_depth_to_ft AS "Total Depth To (ft)",
+    -- Lab result columns
+    lab_name AS "Laboratory",
+    lab_coc_no AS "Laboratory COC",
+    samp_no AS "Sample ID",
+    lab_batch_no AS "Lab Batch No",
+    qa_comment AS "Lab QA Comment",
+    qa_level AS "Validation Status",
+    analysis AS "Analysis",
+    CASE NULLIF(TRIM(analysis), '')
+        WHEN 'V'  THEN 'Volatiles'
+        WHEN 'B'  THEN 'Semi-Volatiles'
+        WHEN 'P'  THEN 'Pesticides/PCBs'
+        WHEN 'M'  THEN 'Metals'
+        WHEN 'C'  THEN 'Non-Metals/Other Inorganics'
+        WHEN 'T'  THEN 'Total Petroleum Hydrocarbons'
+        WHEN 'F'  THEN 'Dioxins/Furans'
+        WHEN 'H'  THEN 'Herbicides'
+        WHEN 'R'  THEN 'Radiological'
+        WHEN 'PC' THEN 'Physical Characteristic'
+        ELSE NULLIF(TRIM(analysis), '')
+    END AS "Analysis Description",
+    analytical_method AS "Analytical Method",
+    INITCAP(analyte) AS "Analyte",
+    cas_no AS "CAS Number",
+    'µg/L' AS "Result Units",
+    result * conversion_factor AS "Result",
+    mdl * conversion_factor AS "Method Detection Limit",
+    limit_of_quantitation * conversion_factor AS "Limit of Quantitation",
+    reporting_limit * conversion_factor AS "Reporting Limit",
+    lab_result_qualifier AS "Lab Result Qualifier",
+    CASE
+        WHEN lab_result_qualifier IS NULL
+            OR lab_result_qualifier = ''
+            OR lab_result_qualifier NOT ILIKE '%u%'
+            THEN TRUE
+        ELSE FALSE
+    END AS "Detected?",
+    CASE
+        WHEN lab_result_qualifier IS NULL
+            OR lab_result_qualifier = ''
+            OR lab_result_qualifier NOT ILIKE '%u%'
+        THEN
+            RTRIM(
+                RTRIM(
+                    TO_CHAR(
+                        result * conversion_factor,
+                        'FM999,999,999,999,990.9999999999'
+                    ),
+                    '0'
+                ),
+                '.'
+            )
+            ||
+            CASE
+                WHEN NULLIF(TRIM(lab_result_qualifier), '') IS NOT NULL
+                    THEN ' (' || TRIM(lab_result_qualifier) || ')'
+                ELSE ''
+            END
+            || ' µg/L'
+        ELSE
+            '<< '
+            ||
+            RTRIM(
+                RTRIM(
+                    TO_CHAR(
+                        result * conversion_factor,
+                        'FM999,999,999,999,990.9999999999'
+                    ),
+                    '0'
+                ),
+                '.'
+            )
+            ||
+            CASE
+                WHEN NULLIF(
+                    TRIM(REGEXP_REPLACE(lab_result_qualifier, 'u', '', 'gi')),
+                    ''
+                ) IS NOT NULL
+                    THEN ' (' ||
+                         TRIM(REGEXP_REPLACE(lab_result_qualifier, 'u', '', 'gi'))
+                         || ')'
+                ELSE ''
+            END
+            || ' µg/L'
+    END AS "Result Formatted"
+FROM base]]></_.fcp.ObjectModelEncapsulateLegacy.true...relation>
+        <metadata-records>
+          <metadata-record class='column'>
+            <remote-name>Siera ID</remote-name>
+            <remote-type>20</remote-type>
+            <local-name>[Siera ID]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Siera ID</remote-alias>
+            <ordinal>1</ordinal>
+            <local-type>integer</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>19</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Date</remote-name>
+            <remote-type>7</remote-type>
+            <local-name>[Sample Date]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Date</remote-alias>
+            <ordinal>2</ordinal>
+            <local-type>date</local-type>
+            <aggregation>Year</aggregation>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Date Time</remote-name>
+            <remote-type>135</remote-type>
+            <local-name>[Date Time]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Date Time</remote-alias>
+            <ordinal>3</ordinal>
+            <local-type>datetime</local-type>
+            <aggregation>Year</aggregation>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Project Name</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Project Name]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Project Name</remote-alias>
+            <ordinal>4</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Project City</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Project City]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Project City</remote-alias>
+            <ordinal>5</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Project State</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Project State]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Project State</remote-alias>
+            <ordinal>6</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Project Latitude</remote-name>
+            <remote-type>5</remote-type>
+            <local-name>[Project Latitude]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Project Latitude</remote-alias>
+            <ordinal>7</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>17</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Project Longitude</remote-name>
+            <remote-type>5</remote-type>
+            <local-name>[Project Longitude]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Project Longitude</remote-alias>
+            <ordinal>8</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>17</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Plan Name</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Plan Name]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Plan Name</remote-alias>
+            <ordinal>9</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Assessment Name</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Assessment Name]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Assessment Name</remote-alias>
+            <ordinal>10</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Assessment Label</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Assessment Label]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Assessment Label</remote-alias>
+            <ordinal>11</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Assessment Status</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Assessment Status]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Assessment Status</remote-alias>
+            <ordinal>12</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Field Comments</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Field Comments]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Field Comments</remote-alias>
+            <ordinal>13</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <cast-to-local-type>true</cast-to-local-type>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>SDG ID</remote-name>
+            <remote-type>3</remote-type>
+            <local-name>[SDG ID]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>SDG ID</remote-alias>
+            <ordinal>14</ordinal>
+            <local-type>integer</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>10</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Primary Identifier</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Primary Identifier]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Primary Identifier</remote-alias>
+            <ordinal>15</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Secondary Identifier</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Secondary Identifier]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Secondary Identifier</remote-alias>
+            <ordinal>16</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Type</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Sample Type]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Type</remote-alias>
+            <ordinal>17</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Subtype</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Sample Subtype]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Subtype</remote-alias>
+            <ordinal>18</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>50</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Matrix</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Matrix]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Matrix</remote-alias>
+            <ordinal>19</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Latitude</remote-name>
+            <remote-type>5</remote-type>
+            <local-name>[Sample Latitude]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Latitude</remote-alias>
+            <ordinal>20</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>17</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Longitude</remote-name>
+            <remote-type>5</remote-type>
+            <local-name>[Sample Longitude]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Longitude</remote-alias>
+            <ordinal>21</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>17</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Location Latitude</remote-name>
+            <remote-type>5</remote-type>
+            <local-name>[Location Latitude]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Location Latitude</remote-alias>
+            <ordinal>22</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>17</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Location Longitude</remote-name>
+            <remote-type>5</remote-type>
+            <local-name>[Location Longitude]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Location Longitude</remote-alias>
+            <ordinal>23</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>17</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Location Type</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Location Type]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Location Type</remote-alias>
+            <ordinal>24</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>256</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Location ID</remote-name>
+            <remote-type>20</remote-type>
+            <local-name>[Location ID]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Location ID</remote-alias>
+            <ordinal>25</ordinal>
+            <local-type>integer</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>19</precision>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Location Code</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Location Code]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Location Code</remote-alias>
+            <ordinal>26</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>50</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Fixed Location Description</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Fixed Location Description]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Fixed Location Description</remote-alias>
+            <ordinal>27</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>1000</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Color</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Sample Color]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Color</remote-alias>
+            <ordinal>28</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Odor</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Sample Odor]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Odor</remote-alias>
+            <ordinal>29</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>255</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Turbidity (NTU)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Turbidity (NTU)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Turbidity (NTU)</remote-alias>
+            <ordinal>30</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Temperature (°C)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Temperature (°C)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Temperature (°C)</remote-alias>
+            <ordinal>31</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Dissolved Oxygen (mg/L)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Dissolved Oxygen (mg/L)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Dissolved Oxygen (mg/L)</remote-alias>
+            <ordinal>32</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Conductivity (mS/cm)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Conductivity (mS/cm)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Conductivity (mS/cm)</remote-alias>
+            <ordinal>33</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>pH</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[pH]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>pH</remote-alias>
+            <ordinal>34</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Oxygen Reduction Potential (mV)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Oxygen Reduction Potential (mV)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Oxygen Reduction Potential (mV)</remote-alias>
+            <ordinal>35</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>19</precision>
+            <scale>12</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Total Dissolved Solids (g/L)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Total Dissolved Solids (g/L)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Total Dissolved Solids (g/L)</remote-alias>
+            <ordinal>36</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>19</precision>
+            <scale>12</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Salinity (ppt)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Salinity (ppt)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Salinity (ppt)</remote-alias>
+            <ordinal>37</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>19</precision>
+            <scale>12</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Free Chlorine (mg/L)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Free Chlorine (mg/L)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Free Chlorine (mg/L)</remote-alias>
+            <ordinal>38</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>18</precision>
+            <scale>10</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Total Chlorine (mg/L)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Total Chlorine (mg/L)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Total Chlorine (mg/L)</remote-alias>
+            <ordinal>39</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <precision>18</precision>
+            <scale>10</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Water Quality QC Issues</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Water Quality QC Issues]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Water Quality QC Issues</remote-alias>
+            <ordinal>40</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <cast-to-local-type>true</cast-to-local-type>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Depth From (ft)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Sample Depth From (ft)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Depth From (ft)</remote-alias>
+            <ordinal>41</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample Depth To (ft)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Sample Depth To (ft)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample Depth To (ft)</remote-alias>
+            <ordinal>42</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Excavation Depth (ft)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Excavation Depth (ft)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Excavation Depth (ft)</remote-alias>
+            <ordinal>43</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Total Depth From (ft)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Total Depth From (ft)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Total Depth From (ft)</remote-alias>
+            <ordinal>44</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Total Depth To (ft)</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Total Depth To (ft)]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Total Depth To (ft)</remote-alias>
+            <ordinal>45</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Laboratory</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Laboratory]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Laboratory</remote-alias>
+            <ordinal>46</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Laboratory COC</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Laboratory COC]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Laboratory COC</remote-alias>
+            <ordinal>47</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Sample ID</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Sample ID]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Sample ID</remote-alias>
+            <ordinal>48</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Lab Batch No</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Lab Batch No]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Lab Batch No</remote-alias>
+            <ordinal>49</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Lab QA Comment</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Lab QA Comment]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Lab QA Comment</remote-alias>
+            <ordinal>50</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Validation Status</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Validation Status]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Validation Status</remote-alias>
+            <ordinal>51</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Analysis</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Analysis]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Analysis</remote-alias>
+            <ordinal>52</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Analysis Description</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Analysis Description]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Analysis Description</remote-alias>
+            <ordinal>53</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <cast-to-local-type>true</cast-to-local-type>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Analytical Method</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Analytical Method]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Analytical Method</remote-alias>
+            <ordinal>54</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Analyte</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Analyte]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Analyte</remote-alias>
+            <ordinal>55</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <cast-to-local-type>true</cast-to-local-type>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>CAS Number</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[CAS Number]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>CAS Number</remote-alias>
+            <ordinal>56</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Result Units</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Result Units]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Result Units</remote-alias>
+            <ordinal>57</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <cast-to-local-type>true</cast-to-local-type>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Result</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Result]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Result</remote-alias>
+            <ordinal>58</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Method Detection Limit</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Method Detection Limit]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Method Detection Limit</remote-alias>
+            <ordinal>59</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Limit of Quantitation</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Limit of Quantitation]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Limit of Quantitation</remote-alias>
+            <ordinal>60</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Reporting Limit</remote-name>
+            <remote-type>131</remote-type>
+            <local-name>[Reporting Limit]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Reporting Limit</remote-alias>
+            <ordinal>61</ordinal>
+            <local-type>real</local-type>
+            <aggregation>Sum</aggregation>
+            <scale>0</scale>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Lab Result Qualifier</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Lab Result Qualifier]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Lab Result Qualifier</remote-alias>
+            <ordinal>62</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Detected?</remote-name>
+            <remote-type>11</remote-type>
+            <local-name>[Detected?]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Detected?</remote-alias>
+            <ordinal>63</ordinal>
+            <local-type>boolean</local-type>
+            <aggregation>Count</aggregation>
+            <contains-null>true</contains-null>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>Result Formatted</remote-name>
+            <remote-type>129</remote-type>
+            <local-name>[Result Formatted]</local-name>
+            <parent-name>[Custom SQL Query]</parent-name>
+            <remote-alias>Result Formatted</remote-alias>
+            <ordinal>64</ordinal>
+            <local-type>string</local-type>
+            <aggregation>Count</aggregation>
+            <width>2147483647</width>
+            <contains-null>true</contains-null>
+            <cast-to-local-type>true</cast-to-local-type>
+            <collation flag='0' name='LEN_RUS' />
+            <attributes>
+              <attribute datatype='string' name='TypeIsVarchar'>&quot;true&quot;</attribute>
+            </attributes>
+            <_.fcp.ObjectModelEncapsulateLegacy.true...object-id>[_0B1A9034140E478CA2DA860CC1A6AEE3]</_.fcp.ObjectModelEncapsulateLegacy.true...object-id>
+          </metadata-record>
+        </metadata-records>
+      </connection>
+      <aliases enabled='yes' />
+      <column aggregation='Avg' datatype='real' name='[Location Latitude]' role='measure' semantic-role='[Geographical].[Latitude]' type='quantitative' />
+      <column aggregation='Avg' datatype='real' name='[Location Longitude]' role='measure' semantic-role='[Geographical].[Longitude]' type='quantitative' />
+      <column datatype='string' name='[Project City]' role='dimension' semantic-role='[City].[Name]' type='nominal' />
+      <column aggregation='Avg' datatype='real' name='[Project Latitude]' role='measure' semantic-role='[Geographical].[Latitude]' type='quantitative' />
+      <column aggregation='Avg' datatype='real' name='[Project Longitude]' role='measure' semantic-role='[Geographical].[Longitude]' type='quantitative' />
+      <column datatype='string' name='[Project State]' role='dimension' semantic-role='[State].[Name]' type='nominal' />
+      <column aggregation='Avg' datatype='real' name='[Sample Latitude]' role='measure' semantic-role='[Geographical].[Latitude]' type='quantitative' />
+      <column aggregation='Avg' datatype='real' name='[Sample Longitude]' role='measure' semantic-role='[Geographical].[Longitude]' type='quantitative' />
+      <column aggregation='Sum' datatype='integer' name='[Siera ID]' role='dimension' type='ordinal' />
+      <_.fcp.ObjectModelTableType.true...column caption='Custom SQL Query' datatype='table' name='[__tableau_internal_object_id__].[_0B1A9034140E478CA2DA860CC1A6AEE3]' role='measure' type='quantitative' />
+      <drill-paths>
+        <drill-path name='Project State, Project City'>
+          <field>[Project State]</field>
+          <field>[Project City]</field>
+        </drill-path>
+      </drill-paths>
+      <layout _.fcp.SchemaViewerObjectModel.false...dim-percentage='0.5' _.fcp.SchemaViewerObjectModel.false...measure-percentage='0.4' dim-ordering='alphabetic' measure-ordering='alphabetic' show-structure='true' />
+      <semantic-values>
+        <semantic-value key='[Country].[Name]' value='&quot;United States&quot;' />
+      </semantic-values>
+      <datasource-dependencies datasource='Parameters'>
+        <column caption='Enter Project Number' datatype='string' name='[Parameter 1]' param-domain-type='any' role='measure' type='nominal' value='&quot;PROJ-069502&quot;'>
+          <calculation class='tableau' formula='&quot;PROJ-069502&quot;' />
+        </column>
+      </datasource-dependencies>
+      <_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+        <objects>
+          <object caption='Custom SQL Query' id='_0B1A9034140E478CA2DA860CC1A6AEE3'>
+            <properties context=''>
+              <relation connection='postgres.08htc790axz9yd1czoljy1tskj3w' name='Custom SQL Query' type='text'><![CDATA[-- Analytical Water Sampling Results
+-- Subtypes: Drinking Water, Groundwater, Surface Water, Waste Water, Waste Characterization
+-- All results converted to µg/L where possible; non-aqueous units (e.g. degC, %REC) return NULL result
+WITH base AS (
+    SELECT
+        s.id,
+        s.date_time,
+        p.project_name,
+        p.city,
+        p.state,
+        p.latitude                  AS project_lat,
+        p.longitude                 AS project_lon,
+        pl.name                     AS plan_name,
+        atr.name                    AS assessment_name,
+        atr.label                   AS assessment_label,
+        atr.assessment_status       AS assessment_status,
+        s.comments                  AS field_comments,
+        s.sdg_id,
+        s.primary_identifier,
+        s.secondary_identifier,
+        s.sample_type,
+        s.siera_subtype,
+        lr.matrix_id,
+        s.latitude                  AS sample_lat,
+        s.longitude                 AS sample_lon,
+        l.latitude                  AS location_lat,
+        l.longitude                 AS location_lon,
+        lt.name                     AS location_type,
+        l.id                        AS location_id,
+        l.location_code,
+        l.location_description,
+        -- Field water quality parameters (varchar columns require safe cast in outer SELECT)
+        s.ysi_color,
+        s.ysi_odor,
+        s.ysi_turbidity_ntu,
+        s.ysi_temp_c,
+        s.ysi_do_mgl,
+        s.ysi_c_us,
+        s.ysi_ph,
+        s.orp_mv,
+        s.tds_gl,
+        s.salinity_ppt,
+        s.cl2_free_mg_l,
+        s.cl2_total_mg_l,
+        -- Depth
+        s.depth_from_ft_num,
+        s.depth_to_ft_num,
+        s.excavation_depth_ft_num,
+        s.total_depth_from_ft,
+        s.total_depth_to_ft,
+        -- Lab result columns
+        lr.lab_name,
+        lr.lab_coc_no,
+        lr.samp_no,
+        lr.lab_batch_no,
+        lr.qa_comment,
+        lr.qa_level,
+        lr.analysis,
+        lr.analytical_method,
+        lr.analyte,
+        lr.cas_no,
+        lr.result_units,
+        lr.result,
+        lr.mdl,
+        lr.limit_of_quantitation,
+        lr.reporting_limit,
+        lr.lab_result_qualifier,
+        -- Conversion factor to µg/L based on lab-submitted result_units.
+        -- Non-aqueous units (e.g. degC, %REC, NTU) return NULL, which surfaces
+        -- as NULL result columns in Tableau for auditing rather than silently wrong values.
+        CASE
+            WHEN lr.result_units ILIKE 'kg/L%'  THEN 1000000000.0
+            WHEN lr.result_units ILIKE 'g/L%'   THEN 1000000.0
+            WHEN lr.result_units ILIKE 'mg/L%'  THEN 1000.0
+            WHEN lr.result_units ILIKE 'ug/L%'
+              OR lr.result_units ILIKE 'µg/L%'
+              OR lr.result_units ILIKE 'μg/L%'  THEN 1.0
+            WHEN lr.result_units ILIKE 'ng/L%'  THEN 0.001
+            WHEN lr.result_units ILIKE 'pg/L%'  THEN 0.000001
+            ELSE NULL
+        END AS conversion_factor
+    FROM siera AS s
+    JOIN projects AS p
+        ON s.project_id = p.id
+    LEFT JOIN labresults AS lr
+        ON s.project_id = lr.project_id
+        AND s.primary_identifier = lr.samp_no
+        AND lr.sample_type_code ILIKE '%trg%'
+        AND lr.result_type_code = 'A'
+    LEFT JOIN locations AS l
+        ON s.project_id = l.project_id
+        AND s.location_id = l.id
+    LEFT JOIN location_types AS lt
+        ON l.location_type_id = lt.id
+    LEFT JOIN plans AS pl
+        ON s.project_id = pl.project_id
+        AND s.plan_id = pl.id
+    LEFT JOIN assessment_tracker_records AS atr
+        ON s.project_id = atr.project_id
+        AND s.atr_id = atr.id
+    WHERE p.project_number = <[Parameters].[Parameter 1]>
+        AND s.is_usable = TRUE
+        AND COALESCE(s.exclude_sample, FALSE) = FALSE
+        AND s.deleted_at IS NULL
+        AND s.siera_type = 'Sample-Pickup'
+        AND s.siera_subtype IN ('Drinking Water', 'Groundwater', 'Surface Water', 'Waste Water', 'Waste Characterization')
+        AND lr.samp_no IS NOT NULL
+)
+SELECT
+    id AS "Siera ID",
+    date_time::date AS "Sample Date",
+    date_time AS "Date Time",
+    project_name AS "Project Name",
+    city AS "Project City",
+    state AS "Project State",
+    project_lat AS "Project Latitude",
+    project_lon AS "Project Longitude",
+    plan_name AS "Plan Name",
+    assessment_name AS "Assessment Name",
+    assessment_label AS "Assessment Label",
+    assessment_status AS "Assessment Status",
+    field_comments AS "Field Comments",
+    sdg_id AS "SDG ID",
+    primary_identifier AS "Primary Identifier",
+    secondary_identifier AS "Secondary Identifier",
+    sample_type AS "Sample Type",
+    siera_subtype AS "Sample Subtype",
+    matrix_id AS "Matrix",
+    sample_lat AS "Sample Latitude",
+    sample_lon AS "Sample Longitude",
+    location_lat AS "Location Latitude",
+    location_lon AS "Location Longitude",
+    location_type AS "Location Type",
+    location_id AS "Location ID",
+    location_code AS "Location Code",
+    location_description AS "Fixed Location Description",
+    -- Field water quality parameters
+    ysi_color AS "Sample Color",
+    ysi_odor AS "Sample Odor",
+    CASE WHEN TRIM(ysi_turbidity_ntu) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_turbidity_ntu)::numeric
+         ELSE NULL
+    END AS "Turbidity (NTU)",
+    CASE WHEN TRIM(ysi_temp_c) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_temp_c)::numeric
+         ELSE NULL
+    END AS "Temperature (°C)",
+    CASE WHEN TRIM(ysi_do_mgl) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_do_mgl)::numeric
+         ELSE NULL
+    END AS "Dissolved Oxygen (mg/L)",
+    CASE WHEN TRIM(ysi_c_us) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_c_us)::numeric
+         ELSE NULL
+    END AS "Conductivity (mS/cm)",
+    CASE WHEN TRIM(ysi_ph) ~ '^-?\d*\.?\d+$'
+         THEN TRIM(ysi_ph)::numeric
+         ELSE NULL
+    END AS "pH",
+    orp_mv AS "Oxygen Reduction Potential (mV)",
+    tds_gl AS "Total Dissolved Solids (g/L)",
+    salinity_ppt AS "Salinity (ppt)",
+    cl2_free_mg_l AS "Free Chlorine (mg/L)",
+    cl2_total_mg_l AS "Total Chlorine (mg/L)",
+    -- Data quality: non-numeric entries in field instrument columns
+    NULLIF(
+        array_to_string(
+            ARRAY[
+                CASE WHEN TRIM(ysi_turbidity_ntu) IS NOT NULL
+                          AND TRIM(ysi_turbidity_ntu) != ''
+                          AND TRIM(ysi_turbidity_ntu) !~ '^-?\d*\.?\d+$'
+                     THEN 'Turbidity: ''' || TRIM(ysi_turbidity_ntu) || ''''
+                END,
+                CASE WHEN TRIM(ysi_temp_c) IS NOT NULL
+                          AND TRIM(ysi_temp_c) != ''
+                          AND TRIM(ysi_temp_c) !~ '^-?\d*\.?\d+$'
+                     THEN 'Temperature: ''' || TRIM(ysi_temp_c) || ''''
+                END,
+                CASE WHEN TRIM(ysi_do_mgl) IS NOT NULL
+                          AND TRIM(ysi_do_mgl) != ''
+                          AND TRIM(ysi_do_mgl) !~ '^-?\d*\.?\d+$'
+                     THEN 'Dissolved Oxygen: ''' || TRIM(ysi_do_mgl) || ''''
+                END,
+                CASE WHEN TRIM(ysi_c_us) IS NOT NULL
+                          AND TRIM(ysi_c_us) != ''
+                          AND TRIM(ysi_c_us) !~ '^-?\d*\.?\d+$'
+                     THEN 'Conductivity: ''' || TRIM(ysi_c_us) || ''''
+                END,
+                CASE WHEN TRIM(ysi_ph) IS NOT NULL
+                          AND TRIM(ysi_ph) != ''
+                          AND TRIM(ysi_ph) !~ '^-?\d*\.?\d+$'
+                     THEN 'pH: ''' || TRIM(ysi_ph) || ''''
+                END
+            ],
+            ', '
+        ),
+        ''
+    ) AS "Water Quality QC Issues",
+    -- Depth
+    depth_from_ft_num AS "Sample Depth From (ft)",
+    depth_to_ft_num AS "Sample Depth To (ft)",
+    excavation_depth_ft_num AS "Excavation Depth (ft)",
+    total_depth_from_ft AS "Total Depth From (ft)",
+    total_depth_to_ft AS "Total Depth To (ft)",
+    -- Lab result columns
+    lab_name AS "Laboratory",
+    lab_coc_no AS "Laboratory COC",
+    samp_no AS "Sample ID",
+    lab_batch_no AS "Lab Batch No",
+    qa_comment AS "Lab QA Comment",
+    qa_level AS "Validation Status",
+    analysis AS "Analysis",
+    CASE NULLIF(TRIM(analysis), '')
+        WHEN 'V'  THEN 'Volatiles'
+        WHEN 'B'  THEN 'Semi-Volatiles'
+        WHEN 'P'  THEN 'Pesticides/PCBs'
+        WHEN 'M'  THEN 'Metals'
+        WHEN 'C'  THEN 'Non-Metals/Other Inorganics'
+        WHEN 'T'  THEN 'Total Petroleum Hydrocarbons'
+        WHEN 'F'  THEN 'Dioxins/Furans'
+        WHEN 'H'  THEN 'Herbicides'
+        WHEN 'R'  THEN 'Radiological'
+        WHEN 'PC' THEN 'Physical Characteristic'
+        ELSE NULLIF(TRIM(analysis), '')
+    END AS "Analysis Description",
+    analytical_method AS "Analytical Method",
+    INITCAP(analyte) AS "Analyte",
+    cas_no AS "CAS Number",
+    'µg/L' AS "Result Units",
+    result * conversion_factor AS "Result",
+    mdl * conversion_factor AS "Method Detection Limit",
+    limit_of_quantitation * conversion_factor AS "Limit of Quantitation",
+    reporting_limit * conversion_factor AS "Reporting Limit",
+    lab_result_qualifier AS "Lab Result Qualifier",
+    CASE
+        WHEN lab_result_qualifier IS NULL
+            OR lab_result_qualifier = ''
+            OR lab_result_qualifier NOT ILIKE '%u%'
+            THEN TRUE
+        ELSE FALSE
+    END AS "Detected?",
+    CASE
+        WHEN lab_result_qualifier IS NULL
+            OR lab_result_qualifier = ''
+            OR lab_result_qualifier NOT ILIKE '%u%'
+        THEN
+            RTRIM(
+                RTRIM(
+                    TO_CHAR(
+                        result * conversion_factor,
+                        'FM999,999,999,999,990.9999999999'
+                    ),
+                    '0'
+                ),
+                '.'
+            )
+            ||
+            CASE
+                WHEN NULLIF(TRIM(lab_result_qualifier), '') IS NOT NULL
+                    THEN ' (' || TRIM(lab_result_qualifier) || ')'
+                ELSE ''
+            END
+            || ' µg/L'
+        ELSE
+            '<< '
+            ||
+            RTRIM(
+                RTRIM(
+                    TO_CHAR(
+                        result * conversion_factor,
+                        'FM999,999,999,999,990.9999999999'
+                    ),
+                    '0'
+                ),
+                '.'
+            )
+            ||
+            CASE
+                WHEN NULLIF(
+                    TRIM(REGEXP_REPLACE(lab_result_qualifier, 'u', '', 'gi')),
+                    ''
+                ) IS NOT NULL
+                    THEN ' (' ||
+                         TRIM(REGEXP_REPLACE(lab_result_qualifier, 'u', '', 'gi'))
+                         || ')'
+                ELSE ''
+            END
+            || ' µg/L'
+    END AS "Result Formatted"
+FROM base]]></relation>
+            </properties>
+          </object>
+        </objects>
+      </_.fcp.ObjectModelEncapsulateLegacy.true...object-graph>
+    </datasource>
+  </datasources>
+  <actions>
+    <action caption='View SIERA on Projects Website' name='[Action1_4B15AADF976447D8B7435F8E05AFF54D]'>
+      <source datasource='federated.0r8zq6q1gupfag1aa4zyu0nweadz' type='datasource' />
+      <link caption='' expression='https://projects.cteh.com/sieras/&lt;[Siera ID]&gt;' />
+    </action>
+    <datasources>
+      <datasource caption='Water Sample Lab Results SQL' name='federated.0r8zq6q1gupfag1aa4zyu0nweadz' />
+    </datasources>
+    <datasource-dependencies datasource='federated.0r8zq6q1gupfag1aa4zyu0nweadz'>
+      <column aggregation='Sum' datatype='integer' name='[Siera ID]' role='dimension' type='ordinal' />
+    </datasource-dependencies>
+  </actions>
+  <worksheets>
+    <worksheet name='Sheet 1'>
+      <table>
+        <view>
+          <datasources>
+            <datasource caption='Water Sample Lab Results SQL' name='federated.0r8zq6q1gupfag1aa4zyu0nweadz' />
+          </datasources>
+          <datasource-dependencies datasource='federated.0r8zq6q1gupfag1aa4zyu0nweadz'>
+            <column datatype='string' name='[Analyte]' role='dimension' type='nominal' />
+            <column datatype='string' name='[Analytical Method]' role='dimension' type='nominal' />
+            <column datatype='string' name='[CAS Number]' role='dimension' type='nominal' />
+            <column datatype='string' name='[Location Code]' role='dimension' type='nominal' />
+            <column datatype='string' name='[Result Formatted]' role='dimension' type='nominal' />
+            <column datatype='date' name='[Sample Date]' role='dimension' type='ordinal' />
+            <column datatype='string' name='[Sample ID]' role='dimension' type='nominal' />
+            <column datatype='string' name='[Sample Type]' role='dimension' type='nominal' />
+            <column aggregation='Sum' datatype='integer' name='[Siera ID]' role='dimension' type='ordinal' />
+            <column datatype='string' name='[Validation Status]' role='dimension' type='nominal' />
+            <column-instance column='[Analyte]' derivation='None' name='[none:Analyte:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Analytical Method]' derivation='None' name='[none:Analytical Method:nk]' pivot='key' type='nominal' />
+            <column-instance column='[CAS Number]' derivation='None' name='[none:CAS Number:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Location Code]' derivation='None' name='[none:Location Code:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Result Formatted]' derivation='None' name='[none:Result Formatted:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Sample Date]' derivation='None' name='[none:Sample Date:ok]' pivot='key' type='ordinal' />
+            <column-instance column='[Sample ID]' derivation='None' name='[none:Sample ID:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Sample Type]' derivation='None' name='[none:Sample Type:nk]' pivot='key' type='nominal' />
+            <column-instance column='[Siera ID]' derivation='None' name='[none:Siera ID:ok]' pivot='key' type='ordinal' />
+            <column-instance column='[Validation Status]' derivation='None' name='[none:Validation Status:nk]' pivot='key' type='nominal' />
+          </datasource-dependencies>
+          <filter class='categorical' column='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample Type:nk]'>
+            <groupfilter function='except' user:ui-domain='database' user:ui-enumeration='exclusive' user:ui-marker='enumerate'>
+              <groupfilter function='level-members' level='[none:Sample Type:nk]' />
+              <groupfilter function='except'>
+                <groupfilter function='level-members' level='[none:Sample Type:nk]' />
+                <groupfilter function='union'>
+                  <groupfilter function='member' level='[none:Sample Type:nk]' member='&quot;Field Duplicate&quot;' />
+                  <groupfilter function='member' level='[none:Sample Type:nk]' member='&quot;Field Sample&quot;' />
+                  <groupfilter function='member' level='[none:Sample Type:nk]' member='&quot;Field Sample with MS/MSD&quot;' />
+                </groupfilter>
+              </groupfilter>
+            </groupfilter>
+          </filter>
+          <slices>
+            <column>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample Type:nk]</column>
+          </slices>
+          <aggregation value='true' />
+        </view>
+        <style>
+          <style-rule element='cell'>
+            <format attr='width' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Validation Status:nk]' value='186' />
+          </style-rule>
+          <style-rule element='header'>
+            <format attr='height' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample ID:nk]' value='156' />
+            <format attr='width' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Analyte:nk]' value='204' />
+            <format attr='height' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample Date:ok]' value='48' />
+            <format attr='width' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:CAS Number:nk]' value='148' />
+            <format attr='width' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Analytical Method:nk]' value='108' />
+            <format attr='height' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Validation Status:nk]' value='64' />
+          </style-rule>
+          <style-rule element='field-labels'>
+            <format attr='font-family' value='Arial Black' />
+          </style-rule>
+          <style-rule element='label'>
+            <format attr='text-orientation' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample ID:nk]' value='-90' />
+            <format attr='font-family' field='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample ID:nk]' value='Arial Black' />
+          </style-rule>
+          <style-rule element='worksheet'>
+            <format attr='font-family' value='Arial Nova' />
+          </style-rule>
+          <style-rule element='tooltip'>
+            <format attr='font-family' value='Arial Nova' />
+          </style-rule>
+        </style>
+        <panes>
+          <pane selection-relaxation-option='selection-relaxation-allow'>
+            <view>
+              <breakdown value='auto' />
+            </view>
+            <mark class='Automatic' />
+            <encodings>
+              <text column='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Result Formatted:nk]' />
+              <lod column='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Siera ID:ok]' />
+            </encodings>
+            <style>
+              <style-rule element='mark'>
+                <format attr='mark-labels-show' value='true' />
+                <format attr='mark-labels-cull' value='true' />
+              </style-rule>
+              <style-rule element='pane'>
+                <format attr='minwidth' value='-1' />
+                <format attr='maxwidth' value='-1' />
+              </style-rule>
+            </style>
+          </pane>
+        </panes>
+        <rows>([federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Analytical Method:nk] / ([federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Analyte:nk] / [federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:CAS Number:nk]))</rows>
+        <cols>([federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Location Code:nk] / ([federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample ID:nk] / ([federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample Date:ok] / [federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Validation Status:nk])))</cols>
+      </table>
+      <simple-id uuid='{DA6980B1-2BF6-4A7F-AF81-5F90FFFED5B8}' />
+    </worksheet>
+  </worksheets>
+  <windows source-height='30'>
+    <window class='worksheet' maximized='true' name='Sheet 1'>
+      <cards>
+        <edge name='left'>
+          <strip size='160'>
+            <card type='pages' />
+            <card type='filters' />
+            <card type='marks' />
+            <card mode='type_in' param='[Parameters].[Parameter 1]' type='parameter' />
+          </strip>
+        </edge>
+        <edge name='top'>
+          <strip size='2147483647'>
+            <card type='columns' />
+          </strip>
+          <strip size='2147483647'>
+            <card type='rows' />
+          </strip>
+          <strip size='31'>
+            <card type='title' />
+          </strip>
+        </edge>
+        <edge name='right'>
+          <strip size='160'>
+            <card param='[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample Type:nk]' type='filter' />
+          </strip>
+        </edge>
+      </cards>
+      <viewpoint>
+        <highlight>
+          <color-one-way>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Analyte:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Analytical Method:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:CAS Number:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Location Code:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Result Formatted:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample ID:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Sample Type:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Siera ID:ok]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[none:Validation Status:nk]</field>
+            <field>[federated.0r8zq6q1gupfag1aa4zyu0nweadz].[yr:Sample Date:ok]</field>
+          </color-one-way>
+        </highlight>
+      </viewpoint>
+      <simple-id uuid='{C37A39B0-F7EA-431E-98F1-0515912E1851}' />
+    </window>
+  </windows>
+  <thumbnails>
+    <thumbnail height='192' name='Sheet 1' width='192'>
+      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
+    </thumbnail>
+  </thumbnails>
+</workbook>
